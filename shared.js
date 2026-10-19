@@ -9,6 +9,7 @@ var DA = (function () {
     excludeProjects: [],
     rateFilterEnabled: false,
     minRate: "",
+    notifyMinRate: "",
     listenSeconds: 10,
     notifyEmail: "pierre420375@gmail.com",
     running: false,

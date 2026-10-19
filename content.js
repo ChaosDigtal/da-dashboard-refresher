@@ -248,11 +248,36 @@ function projectChoice(plan, extracted) {
   return null;
 }
 
+function rateNotifyPayload(plan, choice, claimedOk) {
+  var raw = plan.settings ? plan.settings.notifyMinRate : "";
+  var extracted = choice.extracted;
+  if (!extracted || !extracted.projectsTabSelected) return null;
+  if (raw === "" || raw == null || !isFinite(Number(raw))) {
+    return { enabled: false, projects: [], skipUrls: [] };
+  }
+  var min = Number(raw);
+  var projects = [];
+  var available = extracted.available || [];
+  for (var i = 0; i < available.length; i++) {
+    var project = available[i];
+    if (project.rate == null || !(project.rate >= min)) continue;
+    projects.push({
+      name: project.name,
+      url: project.url,
+      rateLabel: project.rateLabel || "none"
+    });
+  }
+  var skipUrls = [];
+  if (claimedOk && choice.project && choice.project.url) skipUrls.push(choice.project.url);
+  return { enabled: true, projects: projects, skipUrls: skipUrls };
+}
+
 async function watchDashboard(plan) {
   var deadline = Date.now() + 6000;
   var unselected = 0;
   var lastCount = -1;
   var stableRows = 0;
+  var extracted = null;
   while (Date.now() < deadline) {
     var tab = findProjectsTab(document);
     if (!tab) {
@@ -266,19 +291,24 @@ async function watchDashboard(plan) {
       continue;
     }
     unselected = 0;
-    var extracted = extractDashboard(document);
+    extracted = extractDashboard(document);
     var choice = projectChoice(plan, extracted);
-    if (choice) return choice;
+    if (choice) {
+      choice.extracted = extracted;
+      return choice;
+    }
     var table = tableForHeading(document, "Projects");
     var count = table ? table.querySelectorAll("tbody tr").length : 0;
     if (count > 0) {
       stableRows = count === lastCount ? stableRows + 1 : 0;
       lastCount = count;
-      if (stableRows >= 2) return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match" };
+      if (stableRows >= 2) {
+        return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match", extracted: extracted };
+      }
     }
     await sleep(100);
   }
-  return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match" };
+  return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match", extracted: extracted };
 }
 
 async function onDashboard() {
@@ -303,37 +333,27 @@ async function onDashboard() {
     return;
   }
 
+  var claimedOk = false;
+  if (choice.kind === "project") {
+    claimedOk = !!(await startClaim(choice.project, plan.mode === "triton", plan.notificationId));
+  }
+
   if (choice.kind === "triton-in-progress") {
     await send({ type: "tritonAttemptDone", outcome: "in-progress" });
-    if (plan.nextReloadMs) {
-      await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
-      armLocal(plan.nextReloadMs);
-    }
-    return;
-  }
-
-  if (choice.kind === "triton-not-found") {
+  } else if (choice.kind === "triton-not-found") {
     await send({ type: "tritonAttemptDone", outcome: "not-found" });
-    if (plan.nextReloadMs) {
-      await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
-      armLocal(plan.nextReloadMs);
-    }
-    return;
-  }
-
-  if (choice.kind !== "project") {
+  } else if (choice.kind !== "project") {
     await send({ type: "note", text: "No matching project. Waiting for the next refresh." });
+  }
+
+  var payload = rateNotifyPayload(plan, choice, claimedOk);
+  if (payload) await send(Object.assign({ type: "notifyRateProjects" }, payload));
+
+  if (choice.kind !== "project" || !claimedOk) {
     if (plan.nextReloadMs) {
       await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
       armLocal(plan.nextReloadMs);
     }
-    return;
-  }
-
-  var claimed = await startClaim(choice.project, plan.mode === "triton", plan.notificationId);
-  if (!claimed && plan.nextReloadMs) {
-    await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
-    armLocal(plan.nextReloadMs);
   }
 }
 

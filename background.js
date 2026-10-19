@@ -149,7 +149,8 @@ async function failClaim(reason) {
   }
 }
 
-async function sendClaimEmail(meta) {
+async function sendClaimEmail(meta, claimed) {
+  if (claimed === undefined) claimed = true;
   var state = await getState();
   var controller = new AbortController();
   var timer = setTimeout(function () { controller.abort(); }, 8000);
@@ -164,14 +165,62 @@ async function sendClaimEmail(meta) {
         project_name: meta.name || "",
         rate: meta.rateLabel || "none",
         claimed_time: DA.jstStamp(new Date()),
-        email: state.notifyEmail || ""
+        email: state.notifyEmail || "",
+        claimed: !!claimed
       })
     });
     if (!res.ok) throw new Error("Server responded " + res.status);
-    await logEvent("Claim email requested.");
+    if (claimed) await logEvent("Claim email requested.");
   } finally {
     clearTimeout(timer);
   }
+}
+
+var notifyQueue = Promise.resolve();
+
+async function deliverRateNotifications(msg) {
+  var state = await getState();
+  var previous = Array.isArray(state.notifiedRateKeys) ? state.notifiedRateKeys : [];
+  var known = {};
+  for (var i = 0; i < previous.length; i++) known[previous[i]] = true;
+  var skip = {};
+  var skipUrls = Array.isArray(msg.skipUrls) ? msg.skipUrls : [];
+  for (var s = 0; s < skipUrls.length; s++) skip[skipUrls[s]] = true;
+  if (!msg.enabled) {
+    if (previous.length) await chrome.storage.local.set({ notifiedRateKeys: [] });
+    return { ok: true, failed: 0 };
+  }
+  var projects = Array.isArray(msg.projects) ? msg.projects : [];
+  var nextKeys = [];
+  var failed = 0;
+  for (var p = 0; p < projects.length; p++) {
+    var project = projects[p];
+    var key = project.url || project.name;
+    if (!key || skip[key]) continue;
+    if (known[key]) {
+      nextKeys.push(key);
+      continue;
+    }
+    try {
+      await sendClaimEmail(project, false);
+      nextKeys.push(key);
+    } catch (err) {
+      failed += 1;
+      await logEvent("Notify email failed: " + (err && err.message ? err.message : "request failed"));
+    }
+  }
+  await chrome.storage.local.set({ notifiedRateKeys: nextKeys });
+  return { ok: failed === 0, failed: failed };
+}
+
+function queueRateNotifications(msg) {
+  var run = notifyQueue.then(function () {
+    return deliverRateNotifications(msg);
+  }, function () {
+    return deliverRateNotifications(msg);
+  });
+  notifyQueue = run.then(function () {}, function () {});
+  return run;
 }
 
 async function notifyTriton() {
@@ -403,7 +452,8 @@ async function onDashboardReady(sender) {
       searchProjects: state.searchProjects || [],
       excludeProjects: state.excludeProjects || [],
       rateFilterEnabled: !!state.rateFilterEnabled,
-      minRate: state.minRate
+      minRate: state.minRate,
+      notifyMinRate: state.notifyMinRate
     }
   };
 }
@@ -607,6 +657,7 @@ async function onMessage(msg, sender) {
     if (msg.text) await logEvent(msg.text);
     return { ok: true };
   }
+  if (msg.type === "notifyRateProjects") return queueRateNotifications(msg);
   if (msg.type === "dashboardReady") return onDashboardReady(sender);
   if (msg.type === "prepareClaim") return prepareClaim(msg, sender);
   if (msg.type === "openProjectTab") return openProjectTab(msg);

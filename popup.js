@@ -49,6 +49,7 @@ function settingsPatch() {
     excludeProjects: state.excludeProjects,
     rateFilterEnabled: state.rateFilterEnabled,
     minRate: state.minRate,
+    notifyMinRate: state.notifyMinRate,
     listenSeconds: state.listenSeconds,
     notifyEmail: state.notifyEmail,
     running: state.running
@@ -181,6 +182,7 @@ function render() {
   $("notifyEmail").value = state.notifyEmail || "";
   $("rateEnabled").checked = !!state.rateFilterEnabled;
   $("minRate").value = state.minRate;
+  $("notifyMinRate").value = state.notifyMinRate;
   $("minRate").disabled = !state.rateFilterEnabled;
   fillHours($("startHour"), state.startHour);
   fillHours($("endHour"), state.endHour);
@@ -228,6 +230,11 @@ $("listenSeconds").addEventListener("input", function (event) {
     state.listenSeconds = value;
     scheduleSave();
   }
+});
+
+$("notifyMinRate").addEventListener("input", function (event) {
+  state.notifyMinRate = event.target.value;
+  scheduleSave();
 });
 
 $("minRate").addEventListener("input", function (event) {
