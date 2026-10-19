@@ -136,11 +136,6 @@ function armLocal(delayMs) {
   }, delayMs);
 }
 
-function clickInNewTab(anchor) {
-  anchor.setAttribute("target", "_blank");
-  anchor.click();
-}
-
 async function startClaim(project, fromNotification, notificationId) {
   var prepared = await send({
     type: "prepareClaim",
@@ -149,17 +144,8 @@ async function startClaim(project, fromNotification, notificationId) {
     notificationId: notificationId || null
   });
   if (!prepared || !prepared.ok) return false;
-  var links = queryAll(document, 'a[href*="/workers/tasks"]');
-  var link = null;
-  for (var i = 0; i < links.length; i++) {
-    if (links[i].href === project.url) {
-      link = links[i];
-      break;
-    }
-  }
-  if (link) clickInNewTab(link);
-  var finished = await send({ type: "claimClickFinished" });
-  return !!(finished && finished.ok);
+  var opened = await send({ type: "openProjectTab", url: project.url });
+  return !!(opened && opened.ok);
 }
 
 function findIntendButton() {
@@ -182,7 +168,7 @@ function findExpireLink() {
 }
 
 async function runButtonFlow() {
-  var deadline = Date.now() + 8000;
+  var deadline = Date.now() + 10000;
   var clickedEnter = false;
   var clickedIntend = false;
   var clickedExpire = false;
@@ -196,6 +182,7 @@ async function runButtonFlow() {
       if (expire) {
         expire.click();
         clickedExpire = true;
+        deadline = Math.max(deadline, Date.now() + 10000);
         await sleep(200);
         continue;
       }
@@ -204,6 +191,7 @@ async function runButtonFlow() {
     if (enter && !clickedEnter && !enter.disabled) {
       enter.click();
       clickedEnter = true;
+      deadline = Math.max(deadline, Date.now() + 10000);
     }
     var intend = findIntendButton();
     if (intend && !clickedIntend && !intend.disabled) {
@@ -244,41 +232,53 @@ async function runButtonFlow() {
   await send({ type: "claimResult", ok: true });
 }
 
-async function waitForProjectsTab() {
-  var deadline = Date.now() + 15000;
-  var stable = 0;
-  var last = "";
-  while (Date.now() < deadline) {
-    var tab = findProjectsTab(document);
-    if (tab && tab.getAttribute("aria-selected") === "true") return tab;
-    var sig = tab ? "no" : "missing";
-    stable = sig === last ? stable + 1 : 0;
-    last = sig;
-    if (tab && stable >= 4) return tab;
-    await sleep(250);
+function projectChoice(plan, extracted) {
+  if (plan.mode === "triton") {
+    var inProgress = extracted.inProgress.some(function (project) {
+      return DA.isTritonName(project.name);
+    });
+    if (inProgress) return { kind: "triton-in-progress" };
+    for (var i = 0; i < extracted.available.length; i++) {
+      if (DA.isTritonName(extracted.available[i].name)) return { kind: "project", project: extracted.available[i] };
+    }
+    return null;
   }
-  return findProjectsTab(document);
+  var hit = DA.pickProject(extracted.available, plan.settings || {});
+  if (hit) return { kind: "project", project: hit };
+  return null;
 }
 
-async function waitForProjectRows() {
-  var deadline = Date.now() + 12000;
-  var stable = 0;
-  var last = "";
+async function watchDashboard(plan) {
+  var deadline = Date.now() + 6000;
+  var unselected = 0;
+  var lastCount = -1;
+  var stableRows = 0;
   while (Date.now() < deadline) {
     var tab = findProjectsTab(document);
-    if (tab && tab.getAttribute("aria-selected") !== "true") return false;
-    var table = tableForHeading(document, "Projects");
-    if (table) {
-      var count = table.querySelectorAll("tbody tr").length;
-      var sig = String(count);
-      if (count > 0) return true;
-      stable = sig === last ? stable + 1 : 0;
-      last = sig;
-      if (stable >= 4) return true;
+    if (!tab) {
+      await sleep(100);
+      continue;
     }
-    await sleep(250);
+    if (tab.getAttribute("aria-selected") !== "true") {
+      unselected += 1;
+      if (unselected >= 3) return { kind: "unselected" };
+      await sleep(100);
+      continue;
+    }
+    unselected = 0;
+    var extracted = extractDashboard(document);
+    var choice = projectChoice(plan, extracted);
+    if (choice) return choice;
+    var table = tableForHeading(document, "Projects");
+    var count = table ? table.querySelectorAll("tbody tr").length : 0;
+    if (count > 0) {
+      stableRows = count === lastCount ? stableRows + 1 : 0;
+      lastCount = count;
+      if (stableRows >= 2) return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match" };
+    }
+    await sleep(100);
   }
-  return true;
+  return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match" };
 }
 
 async function onDashboard() {
@@ -289,8 +289,8 @@ async function onDashboard() {
     return;
   }
 
-  var tab = await waitForProjectsTab();
-  if (!tab || tab.getAttribute("aria-selected") !== "true") {
+  var choice = await watchDashboard(plan);
+  if (choice.kind === "unselected") {
     if (plan.mode === "triton") {
       await send({ type: "tritonAttemptDone", outcome: "no-projects-tab" });
     } else {
@@ -303,46 +303,25 @@ async function onDashboard() {
     return;
   }
 
-  await waitForProjectRows();
-  var extracted = extractDashboard(document);
-
-  if (plan.mode === "triton") {
-    var inProgress = extracted.inProgress.some(function (project) {
-      return DA.isTritonName(project.name);
-    });
-    if (inProgress) {
-      await send({ type: "tritonAttemptDone", outcome: "in-progress" });
-      if (plan.nextReloadMs) {
-        await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
-        armLocal(plan.nextReloadMs);
-      }
-      return;
-    }
-    var triton = null;
-    for (var i = 0; i < extracted.available.length; i++) {
-      if (DA.isTritonName(extracted.available[i].name)) {
-        triton = extracted.available[i];
-        break;
-      }
-    }
-    if (!triton) {
-      await send({ type: "tritonAttemptDone", outcome: "not-found" });
-      if (plan.nextReloadMs) {
-        await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
-        armLocal(plan.nextReloadMs);
-      }
-      return;
-    }
-    var grabbed = await startClaim(triton, true, plan.notificationId);
-    if (!grabbed && plan.nextReloadMs) {
+  if (choice.kind === "triton-in-progress") {
+    await send({ type: "tritonAttemptDone", outcome: "in-progress" });
+    if (plan.nextReloadMs) {
       await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
       armLocal(plan.nextReloadMs);
     }
     return;
   }
 
-  var hit = DA.pickProject(extracted.available, plan.settings || {});
-  if (!hit) {
+  if (choice.kind === "triton-not-found") {
+    await send({ type: "tritonAttemptDone", outcome: "not-found" });
+    if (plan.nextReloadMs) {
+      await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
+      armLocal(plan.nextReloadMs);
+    }
+    return;
+  }
+
+  if (choice.kind !== "project") {
     await send({ type: "note", text: "No matching project. Waiting for the next refresh." });
     if (plan.nextReloadMs) {
       await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
@@ -350,7 +329,8 @@ async function onDashboard() {
     }
     return;
   }
-  var claimed = await startClaim(hit, false, null);
+
+  var claimed = await startClaim(choice.project, plan.mode === "triton", plan.notificationId);
   if (!claimed && plan.nextReloadMs) {
     await send({ type: "armRefresh", delayMs: plan.nextReloadMs });
     armLocal(plan.nextReloadMs);

@@ -292,6 +292,33 @@ async function prepareClaim(msg, sender) {
   return { ok: true };
 }
 
+async function openProjectTab(msg) {
+  var claim = await getClaim();
+  if (!claim || claim.phase === "failed" || claim.phase === "done" || claim.phase === "closing") {
+    return { ok: false };
+  }
+  if (claim.tabId) return { ok: true, tabId: claim.tabId };
+  var url = (msg && msg.url) || (claim.meta && claim.meta.url);
+  if (!url) {
+    await failClaim("no-tab");
+    return { ok: false };
+  }
+  try {
+    var created = await chrome.tabs.create({
+      url: url,
+      openerTabId: claim.dashboardTabId || undefined,
+      active: true
+    });
+    claim.tabId = created.id;
+    claim.phase = "opened";
+    await setClaim(claim);
+    return { ok: true, tabId: created.id };
+  } catch (err) {
+    await failClaim("no-tab");
+    return { ok: false };
+  }
+}
+
 async function claimClickFinished() {
   await sleep(1500);
   var claim = await getClaim();
@@ -581,6 +608,7 @@ async function onMessage(msg, sender) {
   }
   if (msg.type === "dashboardReady") return onDashboardReady(sender);
   if (msg.type === "prepareClaim") return prepareClaim(msg, sender);
+  if (msg.type === "openProjectTab") return openProjectTab(msg);
   if (msg.type === "claimClickFinished") return claimClickFinished();
   if (msg.type === "taskPageReady") return onTaskPageReady(msg, sender);
   if (msg.type === "claimResult") {
