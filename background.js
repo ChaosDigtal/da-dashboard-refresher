@@ -33,10 +33,7 @@ async function setClaim(claim) {
 }
 
 async function logEvent(text) {
-  var state = await getState();
-  var log = Array.isArray(state.log) ? state.log.slice(-24) : [];
-  log.push({ t: Date.now(), text: text });
-  await chrome.storage.local.set({ log: log, lastEvent: text });
+  await chrome.storage.local.set({ lastEvent: text, log: [] });
 }
 
 async function ensureOffscreen() {
@@ -529,11 +526,8 @@ async function onTabRemoved(tabId) {
 
 async function clearServerCheckNoise() {
   var state = await getState();
-  var log = Array.isArray(state.log) ? state.log.filter(function (entry) {
-    return String(entry && entry.text || "").indexOf("Server check failed") !== 0;
-  }) : [];
   var patch = {};
-  if (!Array.isArray(state.log) || log.length !== state.log.length) patch.log = log;
+  if (Array.isArray(state.log) && state.log.length) patch.log = [];
   if (String(state.lastEvent || "").indexOf("Server check failed") === 0) {
     patch.lastEvent = state.running ? "Running. Waiting for the JST window." : "Paused.";
   }

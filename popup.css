@@ -184,15 +184,3 @@ button.go {
 button.go[data-state="running"] { background: #3e4a44; }
 
 button.go:hover { filter: brightness(1.05); }
-
-#log {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  max-height: 72px;
-  overflow: auto;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-#log li { padding: 1px 0; }

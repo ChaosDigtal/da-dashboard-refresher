@@ -172,13 +172,6 @@ function renderStatus() {
   var toggle = $("toggle");
   toggle.textContent = state.running ? "Pause" : "Start";
   toggle.dataset.state = state.running ? "running" : "paused";
-  var log = $("log");
-  log.innerHTML = "";
-  (state.log || []).slice(-4).reverse().forEach(function (entry) {
-    var item = document.createElement("li");
-    item.textContent = entry.text;
-    log.appendChild(item);
-  });
 }
 
 function render() {
@@ -201,15 +194,16 @@ async function load() {
   state = Object.assign({}, DA.DEFAULTS, stored);
   if (!Array.isArray(state.searchProjects)) state.searchProjects = [];
   if (!Array.isArray(state.excludeProjects)) state.excludeProjects = [];
-  var cleaned = (state.log || []).filter(function (entry) {
-    return String(entry && entry.text || "").indexOf("Server check failed") !== 0;
-  });
-  var lastWasServerError = String(state.lastEvent || "").indexOf("Server check failed") === 0;
-  if (cleaned.length !== (state.log || []).length || lastWasServerError) {
-    state.log = cleaned;
-    if (lastWasServerError) state.lastEvent = state.running ? "Running. Waiting for the JST window." : "Paused.";
-    await storage.set({ log: state.log, lastEvent: state.lastEvent });
+  var patch = {};
+  if (Array.isArray(state.log) && state.log.length) {
+    state.log = [];
+    patch.log = [];
   }
+  if (String(state.lastEvent || "").indexOf("Server check failed") === 0) {
+    state.lastEvent = state.running ? "Running. Waiting for the JST window." : "Paused.";
+    patch.lastEvent = state.lastEvent;
+  }
+  if (patch.log || patch.lastEvent) await storage.set(patch);
   render();
 }
 
@@ -295,7 +289,7 @@ $("toggle").addEventListener("click", async function () {
 if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener(function (changes, area) {
     if (area !== "local") return;
-    ["running", "lastEvent", "log", "accountName", "startHour", "startMinute", "endHour", "endMinute"].forEach(function (key) {
+    ["running", "lastEvent", "accountName", "startHour", "startMinute", "endHour", "endMinute"].forEach(function (key) {
       if (changes[key]) state[key] = changes[key].newValue;
     });
     if (changes.startHour && document.activeElement !== $("startHour")) $("startHour").value = String(state.startHour);
