@@ -50,6 +50,7 @@ function settingsPatch() {
     rateFilterEnabled: state.rateFilterEnabled,
     minRate: state.minRate,
     listenSeconds: state.listenSeconds,
+    notifyEmail: state.notifyEmail,
     running: state.running
   };
 }
@@ -177,6 +178,7 @@ function renderStatus() {
 function render() {
   $("refreshSeconds").value = state.refreshSeconds;
   $("listenSeconds").value = state.listenSeconds;
+  $("notifyEmail").value = state.notifyEmail || "";
   $("rateEnabled").checked = !!state.rateFilterEnabled;
   $("minRate").value = state.minRate;
   $("minRate").disabled = !state.rateFilterEnabled;
@@ -213,6 +215,11 @@ $("refreshSeconds").addEventListener("input", function (event) {
     state.refreshSeconds = value;
     scheduleSave();
   }
+});
+
+$("notifyEmail").addEventListener("input", function (event) {
+  state.notifyEmail = event.target.value.trim();
+  scheduleSave();
 });
 
 $("listenSeconds").addEventListener("input", function (event) {

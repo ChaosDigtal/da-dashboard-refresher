@@ -10,6 +10,7 @@ var DA = (function () {
     rateFilterEnabled: false,
     minRate: "",
     listenSeconds: 10,
+    notifyEmail: "pierre420375@gmail.com",
     running: false,
     accountName: "",
     pendingHandoff: null,

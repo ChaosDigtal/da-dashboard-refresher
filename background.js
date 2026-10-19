@@ -163,7 +163,8 @@ async function sendClaimEmail(meta) {
         name: state.accountName || "",
         project_name: meta.name || "",
         rate: meta.rateLabel || "none",
-        claimed_time: DA.jstStamp(new Date())
+        claimed_time: DA.jstStamp(new Date()),
+        email: state.notifyEmail || ""
       })
     });
     if (!res.ok) throw new Error("Server responded " + res.status);

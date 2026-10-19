@@ -85,7 +85,7 @@ h2 { font-size: 13px; }
   flex-wrap: wrap;
 }
 
-input[type="number"], select, .term {
+input[type="number"], input[type="email"], select, .term {
   border: 1px solid #c5d1cb;
   background: white;
   color: var(--ink);
@@ -95,6 +95,14 @@ input[type="number"], select, .term {
 }
 
 input[type="number"] { width: 72px; }
+
+.field {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+input[type="email"] { width: 100%; }
 
 .hours select { width: 64px; }
 .hours input { width: 52px; }
