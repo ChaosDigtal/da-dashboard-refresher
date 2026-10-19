@@ -170,14 +170,35 @@ function findIntendButton() {
   return null;
 }
 
+function findExpireLink() {
+  var links = document.querySelectorAll("a");
+  for (var i = 0; i < links.length; i++) {
+    var href = links[i].getAttribute("href") || "";
+    if (textOf(links[i]) === "Expire it and start this task" || href.indexOf("confirm_expire_in_progress") !== -1) {
+      return links[i];
+    }
+  }
+  return null;
+}
+
 async function runButtonFlow() {
   var deadline = Date.now() + 8000;
   var clickedEnter = false;
   var clickedIntend = false;
+  var clickedExpire = false;
   while (Date.now() < deadline) {
     if (DA.isDashboardUrl(location.href)) {
       await send({ type: "claimResult", ok: false, reason: "redirected-to-dashboard" });
       return;
+    }
+    if (!clickedExpire) {
+      var expire = findExpireLink();
+      if (expire) {
+        expire.click();
+        clickedExpire = true;
+        await sleep(200);
+        continue;
+      }
     }
     var enter = document.getElementById("enterWorkModeButton");
     if (enter && !clickedEnter && !enter.disabled) {
@@ -192,11 +213,20 @@ async function runButtonFlow() {
     }
     await sleep(200);
   }
-  var grace = Date.now() + (clickedEnter || clickedIntend ? 2500 : 400);
+  var grace = Date.now() + (clickedEnter || clickedIntend || clickedExpire ? 2500 : 400);
   while (Date.now() < grace) {
     if (DA.isDashboardUrl(location.href)) {
       await send({ type: "claimResult", ok: false, reason: "redirected-to-dashboard" });
       return;
+    }
+    if (!clickedExpire) {
+      var lateExpire = findExpireLink();
+      if (lateExpire) {
+        lateExpire.click();
+        clickedExpire = true;
+        await sleep(200);
+        continue;
+      }
     }
     if (!clickedIntend) {
       var late = findIntendButton();
