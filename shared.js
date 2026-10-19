@@ -153,7 +153,7 @@ var DA = (function () {
     var best = null;
     for (var k = 0; k < projects.length; k++) {
       var project = projects[k];
-      if (project.rate == null || !(project.rate > min)) continue;
+      if (project.rate == null || !(project.rate >= min)) continue;
       var skip = false;
       for (var n = 0; n < excludes.length; n++) {
         if (contains(project.name, excludes[n].term)) {
