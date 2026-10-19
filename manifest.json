@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "DA Dashboard Refresher",
+  "version": "1.0.0",
+  "description": "Refreshes the DataAnnotation worker dashboard and claims the highest-priority project.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArEjOYrcYeSkCbAet3R+jYtdxW6s4ZctmLdHVCknwO4jKcmOT6uytWHseM8YckQBQJEkMocYcpj9FyGvtq6AJvilRnBP8/9NsITWwsDlmxa1Gy2+ckKEVNXi7TeBadGVsPnofGB0k0TWcRQHFcYEqvnJ/rzVxzU00GLXTOkzeTXelQJNGJxeooYMDXHId6nguWqc/TQC5+e05JEIFhe3snRcVp8cStzpE6TryZyVfpWg5rdVV3hzhf5FLNzmj4FIeFxzUfAYbFREA8g3pMQahu7YmSzs0JP+q9xqUWQcg1HSGDFqf4cu2rYb1pD15ao8kFig74cIzM0SGiYNKsShMvQIDAQAB",
+  "permissions": ["storage", "tabs", "alarms", "offscreen"],
+  "host_permissions": [
+    "https://app.dataannotation.tech/*",
+    "https://www.hehehe1012.com/*"
+  ],
+  "action": {
+    "default_title": "DA Dashboard Refresher",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.dataannotation.tech/*"],
+      "js": ["shared.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

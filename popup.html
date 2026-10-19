@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>DA Dashboard Refresher</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">DataAnnotation</p>
+        <h1>Dashboard Refresher</h1>
+      </div>
+      <p id="accountLine" class="account"></p>
+    </header>
+    <div class="wrap">
+      <section>
+        <label class="inline" for="refreshSeconds">
+          Refresh every
+          <input id="refreshSeconds" type="number" min="1" step="1" value="10">
+          seconds
+        </label>
+        <p class="hint">Each wait is random from 0.5× to 1.5× this value, so the average stays on the number you enter.</p>
+      </section>
+
+      <section>
+        <h2>Schedule</h2>
+        <div class="hours">
+          <select id="startHour" aria-label="Start hour"></select>
+          <span>:</span>
+          <input id="startMinute" type="number" min="0" max="59" step="1" value="0" aria-label="Start minute">
+          <span>~</span>
+          <select id="endHour" aria-label="End hour"></select>
+          <span>:</span>
+          <input id="endMinute" type="number" min="0" max="59" step="1" value="0" aria-label="End minute">
+          <span class="unit">JST</span>
+        </div>
+        <p class="hint">Japan time. Refreshing runs from the start time until the end time. 23:30–01:15 covers 23:30–01:15.</p>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Search for these projects</h2>
+          <button type="button" id="addSearch" class="text">Add project</button>
+        </div>
+        <p class="hint">Top row is the highest priority. A project matches when its name contains the term.</p>
+        <div id="searchList" class="rows"></div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Exclude for these projects</h2>
+          <button type="button" id="addExclude" class="text">Add row</button>
+        </div>
+        <p class="hint">Used only when the rate search below is on.</p>
+        <div id="excludeList" class="rows"></div>
+      </section>
+
+      <section>
+        <label class="check" for="rateEnabled">
+          <input id="rateEnabled" type="checkbox">
+          <span>Search for any projects with rate &gt;</span>
+        </label>
+        <label class="rate" for="minRate">
+          <input id="minRate" type="number" min="0" step="0.01" disabled>
+          <span>$/hr</span>
+        </label>
+      </section>
+
+      <section>
+        <label class="inline" for="listenSeconds">
+          Listen Server for updates every
+          <input id="listenSeconds" type="number" min="1" step="1" value="10">
+          seconds
+        </label>
+      </section>
+    </div>
+    <footer>
+      <p id="statusLine">Paused.</p>
+      <button type="button" id="toggle" class="go">Start</button>
+      <ol id="log"></ol>
+    </footer>
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
