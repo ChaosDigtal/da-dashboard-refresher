@@ -248,12 +248,12 @@ function projectChoice(plan, extracted) {
   return null;
 }
 
-function rateNotifyPayload(plan, choice, claimedOk) {
+function rateNotifyPayload(plan, choice) {
   var raw = plan.settings ? plan.settings.notifyMinRate : "";
   var extracted = choice.extracted;
   if (!extracted || !extracted.projectsTabSelected) return null;
   if (raw === "" || raw == null || !isFinite(Number(raw))) {
-    return { enabled: false, projects: [], skipUrls: [] };
+    return { enabled: false, projects: [] };
   }
   var min = Number(raw);
   var projects = [];
@@ -267,9 +267,7 @@ function rateNotifyPayload(plan, choice, claimedOk) {
       rateLabel: project.rateLabel || "none"
     });
   }
-  var skipUrls = [];
-  if (claimedOk && choice.project && choice.project.url) skipUrls.push(choice.project.url);
-  return { enabled: true, projects: projects, skipUrls: skipUrls };
+  return { enabled: true, projects: projects };
 }
 
 async function watchDashboard(plan) {
@@ -333,6 +331,9 @@ async function onDashboard() {
     return;
   }
 
+  var payload = rateNotifyPayload(plan, choice);
+  var notifyPromise = payload ? send(Object.assign({ type: "notifyRateProjects" }, payload)) : null;
+
   var claimedOk = false;
   if (choice.kind === "project") {
     claimedOk = !!(await startClaim(choice.project, plan.mode === "triton", plan.notificationId));
@@ -346,8 +347,7 @@ async function onDashboard() {
     await send({ type: "note", text: "No matching project. Waiting for the next refresh." });
   }
 
-  var payload = rateNotifyPayload(plan, choice, claimedOk);
-  if (payload) await send(Object.assign({ type: "notifyRateProjects" }, payload));
+  if (notifyPromise) await notifyPromise;
 
   if (choice.kind !== "project" || !claimedOk) {
     if (plan.nextReloadMs) {

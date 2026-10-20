@@ -72,6 +72,28 @@ async function ensureDashboardTab() {
   return chrome.tabs.create({ url: DASHBOARD, active: true });
 }
 
+async function focusedTab() {
+  var tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  return tabs[0] || null;
+}
+
+async function beginOnFocusedDashboard(mode) {
+  var state = await getState();
+  if (mode === "normal" && !DA.active(state)) return;
+  await chrome.storage.local.set({
+    pendingMode: mode,
+    nextReloadAt: Date.now() + 60000
+  });
+  var focused = await focusedTab();
+  if (focused && focused.id && DA.isDashboardUrl(focused.url || "")) {
+    try { await chrome.tabs.reload(focused.id); }
+    catch (err) { await chrome.tabs.update(focused.id, { url: DASHBOARD, active: true }); }
+  } else {
+    await chrome.tabs.create({ url: DASHBOARD, active: true });
+  }
+  await logEvent(mode === "triton" ? "Notification received. Refreshing for Triton." : "Refreshing the dashboard.");
+}
+
 async function kickNow(mode) {
   var state = await getState();
   if (mode === "normal" && !DA.active(state)) return;
@@ -183,9 +205,6 @@ async function deliverRateNotifications(msg) {
   var previous = Array.isArray(state.notifiedRateKeys) ? state.notifiedRateKeys : [];
   var known = {};
   for (var i = 0; i < previous.length; i++) known[previous[i]] = true;
-  var skip = {};
-  var skipUrls = Array.isArray(msg.skipUrls) ? msg.skipUrls : [];
-  for (var s = 0; s < skipUrls.length; s++) skip[skipUrls[s]] = true;
   if (!msg.enabled) {
     if (previous.length) await chrome.storage.local.set({ notifiedRateKeys: [] });
     return { ok: true, failed: 0 };
@@ -196,7 +215,7 @@ async function deliverRateNotifications(msg) {
   for (var p = 0; p < projects.length; p++) {
     var project = projects[p];
     var key = project.url || project.name;
-    if (!key || skip[key]) continue;
+    if (!key) continue;
     if (known[key]) {
       nextKeys.push(key);
       continue;
@@ -495,7 +514,7 @@ async function applyAutoStart(deferKick) {
     running: true
   });
   await logEvent("Schedule start is now " + DA.pad(startHour) + ":" + DA.pad(startMinute) + " JST. Auto refresh is running.");
-  if (!deferKick) await kickNow("normal");
+  if (!deferKick) await beginOnFocusedDashboard("normal");
 }
 
 async function poll() {
@@ -536,7 +555,7 @@ async function poll() {
   if (autoStart) await applyAutoStart(flag);
   if (flag) {
     await chrome.storage.local.set({ pendingNotificationId: data.notification_id || null });
-    await kickNow("triton");
+    await beginOnFocusedDashboard("triton");
   }
 }
 
@@ -569,7 +588,8 @@ async function tick() {
       return;
     }
     state = await getState();
-    if (!state.nextReloadAt || state.nextReloadAt < Date.now() - 8000) await kickNow("normal");
+    if (!state.nextReloadAt) await beginOnFocusedDashboard("normal");
+    else if (state.nextReloadAt < Date.now() - 8000) await kickNow("normal");
   } finally {
     ticking = false;
   }
