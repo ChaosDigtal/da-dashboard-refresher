@@ -127,7 +127,7 @@ async function maybeQueueHandoff(notificationId) {
   if (!notificationId) return;
   var state = await getState();
   if (!state.running || DA.active(state)) return;
-  var times = DA.nextWindow(state.startHour, state.startMinute, state.endHour, state.endMinute);
+  var times = DA.nextSlotWindow(DA.slotsOf(state));
   await chrome.storage.local.set({
     pendingHandoff: {
       notification_id: notificationId,
@@ -497,23 +497,38 @@ async function applyAutoStart(deferKick) {
   var parts = DA.jstParts(new Date());
   var startHour = Number(parts.hour);
   var startMinute = Number(parts.minute);
-  var endHour = Number(state.endHour);
-  var endMinute = DA.clampMinute(state.endMinute);
-  if (startHour === endHour && startMinute === endMinute) {
-    endMinute += 1;
-    if (endMinute >= 60) {
-      endMinute = 0;
-      endHour = (endHour + 1) % 24;
-    }
+  var slots = DA.slotsOf(state);
+  var now = new Date();
+  var inside = false;
+  for (var i = 0; i < slots.length; i++) {
+    if (DA.inWindow(now, slots[i].startHour, slots[i].startMinute, slots[i].endHour, slots[i].endMinute)) inside = true;
   }
+  if (!inside) {
+    if (!slots.length) slots.push({ id: "auto", startHour: startHour, startMinute: startMinute, endHour: startHour, endMinute: startMinute });
+    var slot = slots[0];
+    slot.startHour = startHour;
+    slot.startMinute = startMinute;
+    if (slot.startHour === slot.endHour && slot.startMinute === slot.endMinute) {
+      slot.endMinute += 1;
+      if (slot.endMinute >= 60) {
+        slot.endMinute = 0;
+        slot.endHour = (slot.endHour + 1) % 24;
+      }
+    }
+    slots[0] = slot;
+  }
+  var first = slots[0] || { startHour: startHour, startMinute: startMinute, endHour: startHour, endMinute: startMinute };
   await chrome.storage.local.set({
-    startHour: startHour,
-    startMinute: startMinute,
-    endHour: endHour,
-    endMinute: endMinute,
+    scheduleSlots: slots,
+    startHour: first.startHour,
+    startMinute: first.startMinute,
+    endHour: first.endHour,
+    endMinute: first.endMinute,
     running: true
   });
-  await logEvent("Schedule start is now " + DA.pad(startHour) + ":" + DA.pad(startMinute) + " JST. Auto refresh is running.");
+  await logEvent(inside
+    ? "Auto refresh is running."
+    : "Schedule start is now " + DA.pad(startHour) + ":" + DA.pad(startMinute) + " JST. Auto refresh is running.");
   if (!deferKick) await beginOnFocusedDashboard("normal");
 }
 

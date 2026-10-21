@@ -41,10 +41,11 @@ function fillHours(select, selected) {
 function settingsPatch() {
   return {
     refreshSeconds: state.refreshSeconds,
-    startHour: state.startHour,
-    startMinute: state.startMinute,
-    endHour: state.endHour,
-    endMinute: state.endMinute,
+    scheduleSlots: state.scheduleSlots,
+    startHour: state.scheduleSlots[0] ? state.scheduleSlots[0].startHour : state.startHour,
+    startMinute: state.scheduleSlots[0] ? state.scheduleSlots[0].startMinute : state.startMinute,
+    endHour: state.scheduleSlots[0] ? state.scheduleSlots[0].endHour : state.endHour,
+    endMinute: state.scheduleSlots[0] ? state.scheduleSlots[0].endMinute : state.endMinute,
     searchProjects: state.searchProjects,
     excludeProjects: state.excludeProjects,
     rateFilterEnabled: state.rateFilterEnabled,
@@ -163,11 +164,82 @@ function renderExclude() {
   });
 }
 
+function renderSchedule() {
+  var list = $("scheduleList");
+  list.innerHTML = "";
+  state.scheduleSlots.forEach(function (slot, index) {
+    var wrap = document.createElement("div");
+    wrap.className = "slot";
+
+    var startHour = document.createElement("select");
+    startHour.setAttribute("aria-label", "Start hour " + (index + 1));
+    fillHours(startHour, slot.startHour);
+    startHour.addEventListener("change", function () {
+      slot.startHour = Number(startHour.value);
+      scheduleSave();
+      renderStatus();
+    });
+
+    var startMinute = document.createElement("input");
+    startMinute.type = "number";
+    startMinute.min = "0";
+    startMinute.max = "59";
+    startMinute.step = "1";
+    startMinute.value = String(slot.startMinute);
+    startMinute.setAttribute("aria-label", "Start minute " + (index + 1));
+    startMinute.addEventListener("input", function () {
+      var value = Number(startMinute.value);
+      if (!isFinite(value)) return;
+      slot.startMinute = DA.clampMinute(value);
+      if (value !== slot.startMinute) startMinute.value = String(slot.startMinute);
+      scheduleSave();
+      renderStatus();
+    });
+
+    var endHour = document.createElement("select");
+    endHour.setAttribute("aria-label", "End hour " + (index + 1));
+    fillHours(endHour, slot.endHour);
+    endHour.addEventListener("change", function () {
+      slot.endHour = Number(endHour.value);
+      scheduleSave();
+      renderStatus();
+    });
+
+    var endMinute = document.createElement("input");
+    endMinute.type = "number";
+    endMinute.min = "0";
+    endMinute.max = "59";
+    endMinute.step = "1";
+    endMinute.value = String(slot.endMinute);
+    endMinute.setAttribute("aria-label", "End minute " + (index + 1));
+    endMinute.addEventListener("input", function () {
+      var value = Number(endMinute.value);
+      if (!isFinite(value)) return;
+      slot.endMinute = DA.clampMinute(value);
+      if (value !== slot.endMinute) endMinute.value = String(slot.endMinute);
+      scheduleSave();
+      renderStatus();
+    });
+
+    wrap.appendChild(startHour);
+    wrap.appendChild(document.createTextNode(":"));
+    wrap.appendChild(startMinute);
+    wrap.appendChild(document.createTextNode("~"));
+    wrap.appendChild(endHour);
+    wrap.appendChild(document.createTextNode(":"));
+    wrap.appendChild(endMinute);
+    wrap.appendChild(iconButton("×", "danger delete", function () {
+      state.scheduleSlots = state.scheduleSlots.filter(function (item) { return item.id !== slot.id; });
+      renderSchedule();
+      scheduleSave();
+      renderStatus();
+    }));
+    list.appendChild(wrap);
+  });
+}
+
 function renderStatus() {
-  var active = DA.active(state);
-  var line = "Paused.";
-  if (state.running && active) line = "Running. Refreshing " + DA.windowLabel(state.startHour, state.startMinute, state.endHour, state.endMinute) + ".";
-  else if (state.running) line = "Running. Waiting until " + DA.pad(state.startHour) + ":" + DA.pad(DA.clampMinute(state.startMinute)) + " JST.";
+  var line = DA.runStatus(state);
   if (state.lastEvent && state.lastEvent !== line) line = state.lastEvent;
   $("statusLine").textContent = line;
   $("accountLine").textContent = state.accountName || "";
@@ -184,10 +256,7 @@ function render() {
   $("minRate").value = state.minRate;
   $("notifyMinRate").value = state.notifyMinRate;
   $("minRate").disabled = !state.rateFilterEnabled;
-  fillHours($("startHour"), state.startHour);
-  fillHours($("endHour"), state.endHour);
-  $("startMinute").value = DA.clampMinute(state.startMinute);
-  $("endMinute").value = DA.clampMinute(state.endMinute);
+  renderSchedule();
   renderSearch();
   renderExclude();
   renderStatus();
@@ -198,7 +267,12 @@ async function load() {
   state = Object.assign({}, DA.DEFAULTS, stored);
   if (!Array.isArray(state.searchProjects)) state.searchProjects = [];
   if (!Array.isArray(state.excludeProjects)) state.excludeProjects = [];
+  state.scheduleSlots = DA.slotsOf(state).map(function (slot) {
+    if (!slot.id) slot.id = uid();
+    return slot;
+  });
   var patch = {};
+  if (!Array.isArray(stored.scheduleSlots)) patch.scheduleSlots = state.scheduleSlots;
   if (Array.isArray(state.log) && state.log.length) {
     state.log = [];
     patch.log = [];
@@ -207,7 +281,7 @@ async function load() {
     state.lastEvent = state.running ? "Running. Waiting for the JST window." : "Paused.";
     patch.lastEvent = state.lastEvent;
   }
-  if (patch.log || patch.lastEvent) await storage.set(patch);
+  if (patch.scheduleSlots || patch.log || patch.lastEvent) await storage.set(patch);
   render();
 }
 
@@ -249,31 +323,23 @@ $("rateEnabled").addEventListener("change", function (event) {
   scheduleSave();
 });
 
-$("startHour").addEventListener("change", function (event) {
-  state.startHour = Number(event.target.value);
-  scheduleSave();
-  renderStatus();
-});
-
-$("endHour").addEventListener("change", function (event) {
-  state.endHour = Number(event.target.value);
-  scheduleSave();
-  renderStatus();
-});
-
-function bindMinute(id, key) {
-  $(id).addEventListener("input", function (event) {
-    var value = Number(event.target.value);
-    if (!isFinite(value)) return;
-    state[key] = DA.clampMinute(value);
-    if (value !== state[key]) event.target.value = String(state[key]);
-    scheduleSave();
-    renderStatus();
+$("addSlot").addEventListener("click", function () {
+  var last = state.scheduleSlots[state.scheduleSlots.length - 1];
+  var startHour = last ? Number(last.endHour) % 24 : 9;
+  var startMinute = last ? DA.clampMinute(last.endMinute) : 0;
+  var endHour = (startHour + 1) % 24;
+  var endMinute = startMinute;
+  state.scheduleSlots.push({
+    id: uid(),
+    startHour: startHour,
+    startMinute: startMinute,
+    endHour: endHour,
+    endMinute: endMinute
   });
-}
-
-bindMinute("startMinute", "startMinute");
-bindMinute("endMinute", "endMinute");
+  renderSchedule();
+  scheduleSave();
+  renderStatus();
+});
 
 $("addSearch").addEventListener("click", function () {
   state.searchProjects.push({ id: uid(), preset: "Triton", term: "" });
@@ -303,13 +369,14 @@ $("toggle").addEventListener("click", async function () {
 if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener(function (changes, area) {
     if (area !== "local") return;
-    ["running", "lastEvent", "accountName", "startHour", "startMinute", "endHour", "endMinute"].forEach(function (key) {
+    ["running", "lastEvent", "accountName"].forEach(function (key) {
       if (changes[key]) state[key] = changes[key].newValue;
     });
-    if (changes.startHour && document.activeElement !== $("startHour")) $("startHour").value = String(state.startHour);
-    if (changes.endHour && document.activeElement !== $("endHour")) $("endHour").value = String(state.endHour);
-    if (changes.startMinute && document.activeElement !== $("startMinute")) $("startMinute").value = String(DA.clampMinute(state.startMinute));
-    if (changes.endMinute && document.activeElement !== $("endMinute")) $("endMinute").value = String(DA.clampMinute(state.endMinute));
+    if (changes.scheduleSlots && Array.isArray(changes.scheduleSlots.newValue)) {
+      state.scheduleSlots = changes.scheduleSlots.newValue;
+      var list = $("scheduleList");
+      if (!list.contains(document.activeElement)) renderSchedule();
+    }
     renderStatus();
   });
 }

@@ -5,6 +5,7 @@ var DA = (function () {
     startMinute: 0,
     endHour: 18,
     endMinute: 0,
+    scheduleSlots: null,
     searchProjects: [],
     excludeProjects: [],
     rateFilterEnabled: false,
@@ -189,13 +190,80 @@ var DA = (function () {
     }
   }
 
+  function clampHour(value, fallback) {
+    var hour = Math.round(Number(value));
+    if (!isFinite(hour) || hour < 0 || hour > 23) return fallback;
+    return hour;
+  }
+
+  function normalizeSlot(slot) {
+    return {
+      id: slot && slot.id ? String(slot.id) : "",
+      startHour: clampHour(slot && slot.startHour, 9),
+      startMinute: clampMinute(slot && slot.startMinute),
+      endHour: clampHour(slot && slot.endHour, 18),
+      endMinute: clampMinute(slot && slot.endMinute)
+    };
+  }
+
+  function slotsOf(state) {
+    if (state && Array.isArray(state.scheduleSlots)) return state.scheduleSlots.map(normalizeSlot);
+    var source = state || {};
+    return [normalizeSlot({
+      startHour: source.startHour != null ? source.startHour : 9,
+      startMinute: source.startMinute != null ? source.startMinute : 0,
+      endHour: source.endHour != null ? source.endHour : 18,
+      endMinute: source.endMinute != null ? source.endMinute : 0
+    })];
+  }
+
+  function slotActive(slot, now) {
+    return inWindow(now, slot.startHour, slot.startMinute, slot.endHour, slot.endMinute);
+  }
+
+  function nextSlotWindow(slots, now) {
+    var list = Array.isArray(slots) ? slots : [];
+    var best = null;
+    var bestTime = Infinity;
+    now = now || new Date();
+    for (var i = 0; i < list.length; i++) {
+      var slot = list[i];
+      if (clockSeconds(slot.startHour, slot.startMinute) === clockSeconds(slot.endHour, slot.endMinute)) continue;
+      var window = nextWindow(slot.startHour, slot.startMinute, slot.endHour, slot.endMinute, now);
+      var time = window.start ? new Date(window.start).getTime() : Infinity;
+      if (time < bestTime) {
+        bestTime = time;
+        best = window;
+      }
+    }
+    return best || { start: "", end: "" };
+  }
+
   function active(state, now) {
     if (!state || !state.running) return false;
-    return inWindow(now || new Date(), state.startHour, state.startMinute, state.endHour, state.endMinute);
+    var time = now || new Date();
+    var slots = slotsOf(state);
+    for (var i = 0; i < slots.length; i++) {
+      if (slotActive(slots[i], time)) return true;
+    }
+    return false;
   }
 
   function windowLabel(startHour, startMinute, endHour, endMinute) {
     return pad(startHour) + ":" + pad(clampMinute(startMinute)) + "–" + pad(endHour) + ":" + pad(clampMinute(endMinute)) + " JST";
+  }
+
+  function runStatus(state, now) {
+    if (!state || !state.running) return "Paused.";
+    now = now || new Date();
+    var slots = slotsOf(state);
+    for (var i = 0; i < slots.length; i++) {
+      var slot = slots[i];
+      if (slotActive(slot, now)) return "Running. Refreshing " + windowLabel(slot.startHour, slot.startMinute, slot.endHour, slot.endMinute) + ".";
+    }
+    var upcoming = nextSlotWindow(slots, now);
+    if (!upcoming.start) return "Running. No schedule is set.";
+    return "Running. Waiting until " + upcoming.start.slice(11, 16) + " JST.";
   }
 
   return {
@@ -209,6 +277,9 @@ var DA = (function () {
     clampMinute: clampMinute,
     inWindow: inWindow,
     nextWindow: nextWindow,
+    slotsOf: slotsOf,
+    nextSlotWindow: nextSlotWindow,
+    runStatus: runStatus,
     randomDelayMs: randomDelayMs,
     fold: fold,
     contains: contains,

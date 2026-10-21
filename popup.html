@@ -24,18 +24,12 @@
       </section>
 
       <section>
-        <h2>Schedule</h2>
-        <div class="hours">
-          <select id="startHour" aria-label="Start hour"></select>
-          <span>:</span>
-          <input id="startMinute" type="number" min="0" max="59" step="1" value="0" aria-label="Start minute">
-          <span>~</span>
-          <select id="endHour" aria-label="End hour"></select>
-          <span>:</span>
-          <input id="endMinute" type="number" min="0" max="59" step="1" value="0" aria-label="End minute">
-          <span class="unit">JST</span>
+        <div class="section-head">
+          <h2>Schedule</h2>
+          <button type="button" id="addSlot" class="text">Add time</button>
         </div>
-        <p class="hint">Japan time. Refreshing runs from the start time until the end time. 23:30–01:15 covers 23:30–01:15.</p>
+        <div id="scheduleList" class="rows"></div>
+        <p class="hint">Japan time. Refreshing runs during every time below. A start later than the end runs through midnight.</p>
       </section>
 
       <section>

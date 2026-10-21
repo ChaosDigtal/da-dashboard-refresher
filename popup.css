@@ -104,8 +104,14 @@ input[type="number"] { width: 72px; }
 
 input[type="email"] { width: 100%; }
 
-.hours select { width: 64px; }
-.hours input { width: 52px; }
+.hours select, .slot select { width: 58px; }
+.hours input, .slot input { width: 46px; }
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
 .unit { color: var(--amber); font-weight: 650; }
 
