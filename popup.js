@@ -57,8 +57,15 @@ function settingsPatch() {
   };
 }
 
+var saveChain = Promise.resolve();
+
 function scheduleSave() {
-  storage.set(settingsPatch());
+  var patch = settingsPatch();
+  saveChain = saveChain.then(function () {
+    return storage.set(patch);
+  }, function () {
+    return storage.set(patch);
+  });
 }
 
 function iconButton(label, className, onClick, disabled) {
@@ -372,11 +379,6 @@ if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
     ["running", "lastEvent", "accountName"].forEach(function (key) {
       if (changes[key]) state[key] = changes[key].newValue;
     });
-    if (changes.scheduleSlots && Array.isArray(changes.scheduleSlots.newValue)) {
-      state.scheduleSlots = changes.scheduleSlots.newValue;
-      var list = $("scheduleList");
-      if (!list.contains(document.activeElement)) renderSchedule();
-    }
     renderStatus();
   });
 }

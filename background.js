@@ -91,7 +91,7 @@ async function beginOnFocusedDashboard(mode) {
   } else {
     await chrome.tabs.create({ url: DASHBOARD, active: true });
   }
-  await logEvent(mode === "triton" ? "Notification received. Refreshing for Triton." : "Refreshing the dashboard.");
+  await logEvent(mode === "triton" ? "Notification received. Refreshing for Triton." : DA.runStatus(await getState()));
 }
 
 async function kickNow(mode) {
@@ -109,7 +109,7 @@ async function kickNow(mode) {
   } else {
     await ensureDashboardTab();
   }
-  await logEvent(mode === "triton" ? "Notification received. Refreshing for Triton." : "Refreshing the dashboard.");
+  await logEvent(mode === "triton" ? "Notification received. Refreshing for Triton." : DA.runStatus(await getState()));
 }
 
 async function armIfActive() {
@@ -458,9 +458,11 @@ async function onDashboardReady(sender) {
 
   var mode = state.pendingMode === "triton" ? "triton" : state.pendingMode === "normal" ? "normal" : "idle";
   var active = DA.active(state);
+  if (mode === "normal" && !active) mode = "idle";
   var nextReloadMs = mode === "idle" || !active ? null : DA.randomDelayMs(state.refreshSeconds);
   var patch = { pendingMode: null };
-  if (mode === "normal" || mode === "triton") patch.nextReloadAt = Date.now() + 60000;
+  if ((mode === "normal" || mode === "triton") && active) patch.nextReloadAt = Date.now() + 60000;
+  else if (mode === "triton") patch.nextReloadAt = Date.now() + 60000;
   else if (!active) patch.nextReloadAt = 0;
   await chrome.storage.local.set(patch);
   return {
@@ -594,9 +596,14 @@ async function tick() {
     if (claim) return;
     if (!active) {
       if (state.pendingMode !== "triton") {
-        if (state.nextReloadAt) {
-          await cancelDashboardTimers();
-          await chrome.storage.local.set({ nextReloadAt: 0 });
+        await cancelDashboardTimers();
+        var patch = {};
+        if (state.nextReloadAt) patch.nextReloadAt = 0;
+        if (state.pendingMode === "normal") patch.pendingMode = null;
+        var refreshing = state.lastEvent === "Refreshing the dashboard." || /^Running\. Refreshing /.test(state.lastEvent || "");
+        if (refreshing) patch.lastEvent = DA.runStatus(state);
+        if (patch.nextReloadAt === 0 || patch.pendingMode === null || patch.lastEvent) {
+          await chrome.storage.local.set(patch);
         }
         await maybePoll(await getState());
       }
