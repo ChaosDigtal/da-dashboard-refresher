@@ -333,7 +333,10 @@ async function clickStayLoggedIn() {
 async function onDashboard() {
   publishAccountName();
   var plan = await send({ type: "dashboardReady" });
-  if (plan && plan.stayLogin) await clickStayLoggedIn();
+  if (plan && plan.stayLogin) {
+    await clickStayLoggedIn();
+    await send({ type: "stayLoginDone" });
+  }
   if (!plan || !plan.mode || plan.mode === "ignore" || plan.mode === "idle") {
     if (plan && plan.nextReloadMs) armLocal(plan.nextReloadMs);
     return;

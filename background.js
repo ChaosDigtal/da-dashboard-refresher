@@ -462,8 +462,7 @@ async function onDashboardReady(sender) {
   if (mode === "normal" && !active) mode = "idle";
   var nextReloadMs = mode === "idle" || !active ? null : DA.randomDelayMs(state.refreshSeconds);
   var patch = { pendingMode: null };
-  var stayLogin = !!state.stayLoginPending;
-  if (stayLogin) patch.stayLoginPending = false;
+    var stayLogin = !!state.stayLoginPending;
   if ((mode === "normal" || mode === "triton") && active) patch.nextReloadAt = Date.now() + 60000;
   else if (mode === "triton") patch.nextReloadAt = Date.now() + 60000;
   else if (!active) patch.nextReloadAt = 0;
@@ -598,7 +597,7 @@ async function maybeStayLogin(state) {
   if (DA.jstSeconds(now) >= 10 * 60) return false;
   stayLoginBusy = true;
   try {
-    var patch = { lastStayLoginDay: day, stayLoginPending: true };
+    var patch = { lastStayLoginDay: day, stayLoginPending: true, stayLoginPendingAt: Date.now() };
     if (DA.active(state) && state.pendingMode !== "triton") {
       patch.pendingMode = "normal";
       patch.nextReloadAt = Date.now() + 60000;
@@ -617,6 +616,23 @@ async function maybeStayLogin(state) {
   }
 }
 
+function stayLoginBlocking(state) {
+  if (!state.stayLoginPending) return false;
+  var started = Number(state.stayLoginPendingAt) || 0;
+  return !!started && Date.now() - started < 20000;
+}
+
+async function closeDashboardTabs() {
+  var tabs = await chrome.tabs.query({ url: "https://app.dataannotation.tech/workers/projects*" });
+  var ids = [];
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].id) ids.push(tabs[i].id);
+  }
+  if (ids.length) {
+    try { await chrome.tabs.remove(ids); } catch (err) {}
+  }
+}
+
 async function tick() {
   if (ticking) return;
   ticking = true;
@@ -629,8 +645,10 @@ async function tick() {
     var active = DA.active(state);
     if (claim) return;
     if (!active) {
-      if (state.pendingMode !== "triton") {
+      if (state.pendingMode !== "triton" && !stayLoginBlocking(state)) {
         await cancelDashboardTimers();
+        var wasRefreshing = state.running && (state.pendingMode === "normal" || state.nextReloadAt || state.lastEvent === "Refreshing the dashboard." || /^Running\. Refreshing /.test(state.lastEvent || ""));
+        if (wasRefreshing) await closeDashboardTabs();
         var patch = {};
         if (state.nextReloadAt) patch.nextReloadAt = 0;
         if (state.pendingMode === "normal") patch.pendingMode = null;
@@ -727,6 +745,10 @@ async function onMessage(msg, sender) {
   }
   if (msg.type === "accountName") {
     if (msg.name) await chrome.storage.local.set({ accountName: msg.name });
+    return { ok: true };
+  }
+  if (msg.type === "stayLoginDone") {
+    await chrome.storage.local.set({ stayLoginPending: false, stayLoginPendingAt: 0 });
     return { ok: true };
   }
   if (msg.type === "note") {
