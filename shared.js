@@ -327,6 +327,7 @@ var DA = (function () {
     jstHour: jstHour,
     jstStamp: jstStamp,
     jstWeekday: jstWeekday,
+    jstSeconds: jstSeconds,
     clampMinute: clampMinute,
     inWindow: inWindow,
     nextWindow: nextWindow,
