@@ -20,6 +20,8 @@ var DA = (function () {
     pendingNotificationId: null,
     nextReloadAt: 0,
     lastPollAt: 0,
+    lastStayLoginDay: "",
+    stayLoginPending: false,
     lastEvent: "Paused.",
     log: []
   };
@@ -67,6 +69,33 @@ var DA = (function () {
 
   function clockSeconds(hour, minute) {
     return Number(hour) * 3600 + clampMinute(minute) * 60;
+  }
+
+  function jstWeekday(date) {
+    var name = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo",
+      weekday: "short"
+    }).format(date || new Date());
+    var map = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+    return map[name] || 0;
+  }
+
+  function allWeekdays() {
+    return [1, 2, 3, 4, 5, 6, 7];
+  }
+
+  function normalizeWeekdays(value) {
+    if (!Array.isArray(value)) return allWeekdays();
+    var seen = {};
+    var days = [];
+    for (var i = 0; i < value.length; i++) {
+      var day = Math.round(Number(value[i]));
+      if (day < 1 || day > 7 || seen[day]) continue;
+      seen[day] = true;
+      days.push(day);
+    }
+    days.sort(function (a, b) { return a - b; });
+    return days;
   }
 
   function jstSeconds(date) {
@@ -202,7 +231,8 @@ var DA = (function () {
       startHour: clampHour(slot && slot.startHour, 9),
       startMinute: clampMinute(slot && slot.startMinute),
       endHour: clampHour(slot && slot.endHour, 18),
-      endMinute: clampMinute(slot && slot.endMinute)
+      endMinute: clampMinute(slot && slot.endMinute),
+      weekdays: normalizeWeekdays(slot && slot.weekdays)
     };
   }
 
@@ -218,7 +248,31 @@ var DA = (function () {
   }
 
   function slotActive(slot, now) {
-    return inWindow(now, slot.startHour, slot.startMinute, slot.endHour, slot.endMinute);
+    now = now || new Date();
+    if (!inWindow(now, slot.startHour, slot.startMinute, slot.endHour, slot.endMinute)) return false;
+    var days = normalizeWeekdays(slot.weekdays);
+    if (!days.length) return false;
+    var day = jstWeekday(now);
+    var start = clockSeconds(slot.startHour, slot.startMinute);
+    var end = clockSeconds(slot.endHour, slot.endMinute);
+    if (start > end && jstSeconds(now) < end) day = day === 1 ? 7 : day - 1;
+    return days.indexOf(day) !== -1;
+  }
+
+  function nextWindowForSlot(slot, now) {
+    var days = normalizeWeekdays(slot.weekdays);
+    if (!days.length) return { start: "", end: "" };
+    if (clockSeconds(slot.startHour, slot.startMinute) === clockSeconds(slot.endHour, slot.endMinute)) {
+      return { start: "", end: "" };
+    }
+    var cursor = now || new Date();
+    for (var i = 0; i < 8; i++) {
+      var window = nextWindow(slot.startHour, slot.startMinute, slot.endHour, slot.endMinute, cursor);
+      if (!window.start) return { start: "", end: "" };
+      if (days.indexOf(jstWeekday(new Date(window.start))) !== -1) return window;
+      cursor = new Date(new Date(window.start).getTime() + 1000);
+    }
+    return { start: "", end: "" };
   }
 
   function nextSlotWindow(slots, now) {
@@ -227,9 +281,7 @@ var DA = (function () {
     var bestTime = Infinity;
     now = now || new Date();
     for (var i = 0; i < list.length; i++) {
-      var slot = list[i];
-      if (clockSeconds(slot.startHour, slot.startMinute) === clockSeconds(slot.endHour, slot.endMinute)) continue;
-      var window = nextWindow(slot.startHour, slot.startMinute, slot.endHour, slot.endMinute, now);
+      var window = nextWindowForSlot(list[i], now);
       var time = window.start ? new Date(window.start).getTime() : Infinity;
       if (time < bestTime) {
         bestTime = time;
@@ -274,6 +326,7 @@ var DA = (function () {
     jstParts: jstParts,
     jstHour: jstHour,
     jstStamp: jstStamp,
+    jstWeekday: jstWeekday,
     clampMinute: clampMinute,
     inWindow: inWindow,
     nextWindow: nextWindow,

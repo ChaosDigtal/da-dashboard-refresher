@@ -171,12 +171,76 @@ function renderExclude() {
   });
 }
 
+var DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function daySummary(days) {
+  if (!days.length) return "None";
+  if (days.length === 7) return "All";
+  if (days.length === 1) return DAY_LABELS[days[0] - 1];
+  return String(days.length) + " days";
+}
+
 function renderSchedule() {
   var list = $("scheduleList");
   list.innerHTML = "";
   state.scheduleSlots.forEach(function (slot, index) {
+    if (!Array.isArray(slot.weekdays)) slot.weekdays = [1, 2, 3, 4, 5, 6, 7];
     var wrap = document.createElement("div");
     wrap.className = "slot";
+
+    var drop = document.createElement("div");
+    drop.className = "day-drop";
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "day-toggle";
+    toggle.textContent = daySummary(slot.weekdays);
+    toggle.title = slot.weekdays.map(function (day) { return DAY_LABELS[day - 1]; }).join(", ");
+    toggle.setAttribute("aria-label", "Days for time " + (index + 1));
+    toggle.setAttribute("aria-expanded", "false");
+    var menu = document.createElement("div");
+    menu.className = "day-menu";
+    DAY_LABELS.forEach(function (label, dayIndex) {
+      var value = dayIndex + 1;
+      var choice = document.createElement("label");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = slot.weekdays.indexOf(value) !== -1;
+      box.addEventListener("change", function () {
+        var next = slot.weekdays.slice();
+        var at = next.indexOf(value);
+        if (box.checked && at === -1) next.push(value);
+        if (!box.checked && at !== -1) next.splice(at, 1);
+        next.sort(function (a, b) { return a - b; });
+        slot.weekdays = next;
+        toggle.textContent = daySummary(next);
+        toggle.title = next.map(function (day) { return DAY_LABELS[day - 1]; }).join(", ");
+        scheduleSave();
+        renderStatus();
+      });
+      choice.appendChild(box);
+      choice.appendChild(document.createTextNode(label));
+      menu.appendChild(choice);
+    });
+    menu.addEventListener("click", function (event) {
+      event.stopPropagation();
+    });
+    toggle.addEventListener("click", function (event) {
+      event.stopPropagation();
+      var open = !drop.classList.contains("open");
+      var menus = document.querySelectorAll(".day-drop.open");
+      for (var i = 0; i < menus.length; i++) {
+        menus[i].classList.remove("open");
+        var other = menus[i].querySelector(".day-toggle");
+        if (other) other.setAttribute("aria-expanded", "false");
+      }
+      if (open) {
+        drop.classList.add("open");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    });
+    drop.appendChild(toggle);
+    drop.appendChild(menu);
+    wrap.appendChild(drop);
 
     var startHour = document.createElement("select");
     startHour.setAttribute("aria-label", "Start hour " + (index + 1));
@@ -244,6 +308,15 @@ function renderSchedule() {
     list.appendChild(wrap);
   });
 }
+
+document.addEventListener("click", function () {
+  var menus = document.querySelectorAll(".day-drop.open");
+  for (var i = 0; i < menus.length; i++) {
+    menus[i].classList.remove("open");
+    var toggle = menus[i].querySelector(".day-toggle");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+  }
+});
 
 function renderStatus() {
   var line = DA.runStatus(state);
@@ -341,7 +414,8 @@ $("addSlot").addEventListener("click", function () {
     startHour: startHour,
     startMinute: startMinute,
     endHour: endHour,
-    endMinute: endMinute
+    endMinute: endMinute,
+    weekdays: last && Array.isArray(last.weekdays) ? last.weekdays.slice() : [1, 2, 3, 4, 5, 6, 7]
   });
   renderSchedule();
   scheduleSave();

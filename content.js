@@ -309,9 +309,31 @@ async function watchDashboard(plan) {
   return { kind: plan.mode === "triton" ? "triton-not-found" : "no-match", extracted: extracted };
 }
 
+function findStayButton() {
+  var buttons = queryAll(document, "button");
+  for (var i = 0; i < buttons.length; i++) {
+    if (textOf(buttons[i]) === "Click here to stay logged in") return buttons[i];
+  }
+  return null;
+}
+
+async function clickStayLoggedIn() {
+  var deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    var button = findStayButton();
+    if (button && !button.disabled) {
+      button.click();
+      await send({ type: "note", text: "Clicked stay logged in." });
+      return;
+    }
+    await sleep(200);
+  }
+}
+
 async function onDashboard() {
   publishAccountName();
   var plan = await send({ type: "dashboardReady" });
+  if (plan && plan.stayLogin) await clickStayLoggedIn();
   if (!plan || !plan.mode || plan.mode === "ignore" || plan.mode === "idle") {
     if (plan && plan.nextReloadMs) armLocal(plan.nextReloadMs);
     return;

@@ -3,6 +3,7 @@
 importScripts("shared.js");
 
 var ticking = false;
+var stayLoginBusy = false;
 var pollPromise = null;
 var commitToken = 0;
 var claimLock = false;
@@ -461,12 +462,15 @@ async function onDashboardReady(sender) {
   if (mode === "normal" && !active) mode = "idle";
   var nextReloadMs = mode === "idle" || !active ? null : DA.randomDelayMs(state.refreshSeconds);
   var patch = { pendingMode: null };
+  var stayLogin = !!state.stayLoginPending;
+  if (stayLogin) patch.stayLoginPending = false;
   if ((mode === "normal" || mode === "triton") && active) patch.nextReloadAt = Date.now() + 60000;
   else if (mode === "triton") patch.nextReloadAt = Date.now() + 60000;
   else if (!active) patch.nextReloadAt = 0;
   await chrome.storage.local.set(patch);
   return {
     mode: mode,
+    stayLogin: stayLogin,
     nextReloadMs: nextReloadMs,
     notificationId: state.pendingNotificationId || null,
     settings: {
@@ -585,12 +589,42 @@ async function maybePoll(state) {
   await pollPromise;
 }
 
+async function maybeStayLogin(state) {
+  if (stayLoginBusy || state.stayLoginPending) return false;
+  var now = new Date();
+  var parts = DA.jstParts(now);
+  var day = parts.year + "-" + parts.month + "-" + parts.day;
+  if (state.lastStayLoginDay === day) return false;
+  if (DA.jstSeconds(now) >= 10 * 60) return false;
+  stayLoginBusy = true;
+  try {
+    var patch = { lastStayLoginDay: day, stayLoginPending: true };
+    if (DA.active(state) && state.pendingMode !== "triton") {
+      patch.pendingMode = "normal";
+      patch.nextReloadAt = Date.now() + 60000;
+    }
+    await chrome.storage.local.set(patch);
+    var focused = await focusedTab();
+    if (focused && focused.id && DA.isDashboardUrl(focused.url || "")) {
+      try { await chrome.tabs.reload(focused.id); }
+      catch (err) { await chrome.tabs.update(focused.id, { url: DASHBOARD, active: true }); }
+    } else {
+      await chrome.tabs.create({ url: DASHBOARD, active: true });
+    }
+    return true;
+  } finally {
+    stayLoginBusy = false;
+  }
+}
+
 async function tick() {
   if (ticking) return;
   ticking = true;
   try {
     await ensureOffscreen();
     var state = await getState();
+    if (await maybeStayLogin(state)) return;
+    state = await getState();
     var claim = await getClaim();
     var active = DA.active(state);
     if (claim) return;
